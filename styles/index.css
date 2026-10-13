@@ -1,2 +1,93 @@
+@import url('https://fonts.googleapis.com/css2?family=Germania+One&display=swap');
+
 /* Presentation-specific style overrides.
    The rockdove theme provides the base look; add tweaks here. */
+
+   .slidev-vclick-hidden {
+     display: none !important;
+   }
+
+/* Haunted section slides: smoke and a vignette, layered over whichever
+   colour the theme gives each intro slide. Content (including the cold open's code block) sits above it. */
+.slidev-layout.intro {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.slidev-layout.intro > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Vignette */
+.slidev-layout.intro::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgb(0 0 0 / 0.38) 100%);
+}
+
+/* Smoke: the animated smoke texture from "What we do in the Shadows", tinted with the
+   slide's own theme colour via hard-light blending */
+.slidev-layout.intro {
+  background-image:
+    linear-gradient(var(--color-background), var(--color-background)),
+    url(/images/smoke-bg.webp);
+  background-size: cover;
+  background-position: center;
+  background-blend-mode: hard-light;
+}
+
+/* Epitaph under an item's title: "The ghost of ..." */
+.slidev-layout h1 + p:has(> small:only-child) {
+  margin-top: -0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.slidev-layout h1 + p > small:only-child {
+  font-family: var(--slidev-theme-font-serif, "Zilla Slab"), serif;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+}
+
+/* Bio portrait in a gilded frame, centred in the right half of the slide.
+   Gold-Frame-PNG-File.png is 1010x1395 with a 563x924 window inset 236/224/235/223px
+   (top/right/bottom/left). It's a border-image sliced on that window, and the photo box keeps
+   the window's proportions, so the frame scales evenly rather than stretching.
+   Positioned without transforms because the layout animates the image with v-motion. */
+.slidev-layout.bio .bio__image {
+  /* Tweak these: total height of the framed portrait, nudges from centre, and photo crop */
+  --frame-height: 440px;
+  --frame-offset-x: 0px;
+  --frame-offset-y: 0px;
+  --photo-position: center;
+
+  --s: calc(var(--frame-height) / 1395);
+  box-sizing: content-box;
+  width: calc(563 * var(--s));
+  height: calc(924 * var(--s));
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  object-position: var(--photo-position);
+  border-style: solid;
+  border-width: calc(236 * var(--s)) calc(224 * var(--s)) calc(235 * var(--s)) calc(223 * var(--s));
+  border-image: url(/images/Gold-Frame-PNG-File.png) 236 224 235 223 stretch;
+  right: auto;
+  bottom: auto;
+  left: calc(75% - 505 * var(--s) + var(--frame-offset-x));
+  top: calc(50% - 697.5 * var(--s) + var(--frame-offset-y));
+  filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.4));
+}
+
+/* Cheesy gothic titles on every slide */
+.slidev-layout h1 {
+  font-family: "Germania One", var(--slidev-theme-font-serif, "Zilla Slab"), serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
