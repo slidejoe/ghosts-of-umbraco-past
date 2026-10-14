@@ -29,14 +29,12 @@ var totalItemCount = allArticles.Count();
 ```
 
 <!--
-
 You've had a few minutes to look at this — **can I get
   a read of the room? Who'd merge this?**
 
 And who wouldn't?
-It was correct. It was idiomatic. **Every hand that went up was right — for the Umbraco
-  they learned on.**
 
+It *was* correct - **every hand that went up was right — for the Umbraco they learned on.**
 -->
 
 ---
@@ -48,7 +46,7 @@ layout: cover
 Coding Practices to Lay to Rest in 2027
 
 <!--
-We're here to look at practices and patterns we've picked up or been taught over the years that are no longer the best way to do things. **Every pattern in this talk was correct advice at the time.** But ideas and technology have moved on. **The ground moved under them**: the cache, the runtime, the language, the backoffice, what editors expect. That's the thread through everything today.
+We're here to look at practices and patterns we've picked up or been taught over the years that are no longer the best way to do things. **Every pattern in this talk was correct advice at the time.** But ideas and technology have moved on.
 
 We'll look at **three places these ghosts haunt: your code, your editors, and your infrastructure.** And **we're not here to judge** - there are a lot of moving parts to keep track of and learned habits are hard to change. I strongly suspect that everyone in this room, myself included, is still doing some of these, and at the very least has some of these patterns in a codebase. All the examples are real; where they're contrived, it's only to anonymise clients. And we'll end on some advice for how to spot these lapsed patterns in the future.
 -->
@@ -92,7 +90,7 @@ layout: two-cols-header
 ---
 
 # Traversing the Tree
-<small>The ghost of NuCache (2024, v15)</small>
+<small>The ghost of NuCache (2024, v14)</small>
 
 ::left::
 
@@ -125,12 +123,15 @@ var totalItemCount = allArticles.Count();
 var articleList = Umbraco.ContentAtRoot()
   .FirstOrDefault()?.FirstChild<ArticleList>();
 
-if (!_examineManager.TryGetIndex("ExternalIndex", out IIndex? index)) return;
+if (!_examineManager.TryGetIndex("ExternalIndex", out IIndex? index))
+return;
 
 var results = index.Searcher.CreateQuery("content")
     .NodeTypeAlias(Article.ModelTypeAlias)
-    .And().ParentId(articleList.Id) // Or Search Extensions with .Path()
-    .OrderByDescending(new SortableField("articleDate", SortType.Long))
+    .And()
+    .ParentId(articleList.Id) // Or Search Extensions with .Path()
+    .OrderByDescending(new SortableField("articleDate",
+      SortType.Long))
     .Execute(new QueryOptions((pageNumber - 1) * pageSize, pageSize));
 
 var pageOfArticles = results
@@ -142,12 +143,15 @@ var totalItemCount = results.TotalItemCount;
 ```
 
 ```csharp
-if (!_examineManager.TryGetIndex("ExternalIndex", out IIndex? index)) return;
+if (!_examineManager.TryGetIndex("ExternalIndex", out IIndex? index))
+return;
 
 var results = index.Searcher.CreateQuery("content")
     .NodeTypeAlias(Article.ModelTypeAlias)
-    .And().ParentId(articleList.Id) // Or Search Extensions with .Path()
-    .OrderByDescending(new SortableField("articleDate", SortType.Long))
+    .And()
+    .ParentId(articleList.Id) // Or Search Extensions with .Path()
+    .OrderByDescending(new SortableField("articleDate",
+      SortType.Long))
     .Execute(new QueryOptions((pageNumber - 1) * pageSize, pageSize));
 
 var pageOfArticles = results
@@ -191,12 +195,8 @@ var totalItemCount = results.Total;
 "Umbraco": {
   "CMS": {
     "Cache": {
-      "DocumentBreadthFirstSeedCount": 100,
-      "MediaBreadthFirstSeedCount": 100,
-      "ElementBreadthFirstSeedCount": 100,
-      "DocumentSeedBatchSize": 100,
-      "MediaSeedBatchSize": 100,
-      "ElementSeedBatchSize": 100
+      "ContentTypeKeys": [ "<Article doc type key>" ],
+      "DocumentBreadthFirstSeedCount": 500
     }
   }
 }
@@ -217,15 +217,17 @@ But even then it had two small costs: **we walk far more of the tree than we nee
 
 Those two small costs are exaggerated by changes to the cache in v15: **the content cache is now lazy-loaded**, so every node we touch that isn't already cached gets loaded from the database. A traversal can materialise hundreds of documents, then throw away all but ten. And DescendantsOrSelf is depth-first: right down to the bottom of each branch before it moves across, so **every node before the one you want gets loaded.**
 
-We've got a few options here, but **all of them involve switching from tree traversal to search.** [Click] Search is a much more efficient way of sorting and filtering documents like this. We've also got a slightly more efficient way of finding the parent node, by traversing the tree more precisely - using Children rather than Descendants.
+We've got a few options here, but **all of them involve switching from tree traversal to search.** [Click] Search is a much more efficient way of sorting and filtering documents like this.
+
+We've also got a slightly more efficient way of finding the parent node, by traversing the tree more precisely using Children rather than Descendants.
 
 In fact, we don't need to specify the parent node at all - it was a little redundant in the first example - [Click] so we can skip that altogether and just search by page type.
 
-You'll note the index gives you IDs, so you still resolve them back to IPublishedContent yourself. This may seem less efficient, but remember **we're now only getting the published content for the 10 IDs we care about - and that's what the cache is fast at!**
+You'll notice we're having to manually convert the IDs the search index gives us to IPublishedContent. This may seem less efficient, but remember **we're now only getting the published content for the 10 IDs we care about - and that's what the cache is fast at!**
 
-But of course, this talk is all about features changing around us, so I'd be remiss not to mention **the new Umbraco Search abstraction - currently a package, and planned to ship in core with v19 in December.** We can do the same sort of thing here. [Click]
+But of course, this talk is all about features changing around us, so of course I should be writing this with **the new Umbraco Search abstraction - currently a package, and planned to ship in core with v19 in December.** We can do the same sort of thing here. [Click]
 
-[Click] And a quick win if you can't fix the traversal yet: **cache seeding.** These settings control **what's preloaded into the cache at startup** - they're not a limit on how much can be cached. They're **all 100 by default - a round number, not a reasoned one - so tune them per site.** And if it's your 200 blog posts you're traversing, seeding breadth-first from the root won't reach them: **use ContentTypeKeys to seed every document of those types**, however deep they are.
+[Click] And a quick win if you can't fix the traversal yet: **cache seeding** - **what's preloaded into the cache at startup.** If you know a listing page is going to walk 200 articles, **ContentTypeKeys preloads every document of the types you list**, however deep they are in the tree, so those reads come from memory from the very first request. And **DocumentBreadthFirstSeedCount preloads the first N documents from the root down** - your home page, landing pages and navigation. It's **100 by default, which is a round number, not a reasoned one, so size it for your site.** It only helps after a cold start, though - **it's a stopgap while you move to search, not the fix.**
 -->
 
 ---
@@ -233,7 +235,7 @@ layout: two-cols-header
 ---
 
 # `.ToList()` everywhere
-<small>The ghost of `IEnumerable<T>` everywhere (2023, C# 12)</small>
+<small>The ghost of `IEnumerable<T>` everywhere (2023, C# 11)</small>
 
 ::left::
 
@@ -304,7 +306,7 @@ layout: two-cols-header
 ---
 
 # `DateTime` is so `DateTime.AddYears(-1)`
-<small>The ghost of `DateTime.Now` (2023, .NET 8)</small>
+<small>The ghost of `DateTime.Now` (2023, .NET 7)</small>
 
 ::left::
 
@@ -372,19 +374,17 @@ This is a contrived example, but it's closely based on real code of ours, and im
 
 [Click] So what should we be doing instead? **DateTimeOffset for any absolute point in time.** Keep DateTime for genuinely abstract dates, like a birthday - you celebrate it on the same day whatever time zone you're in. And instead of the static DateTime.Now, **inject a TimeProvider**, which has been in .NET since version 8.
 
-[Click] Because **DateTime.Now is untestable.** The only way to test what happens just before the clocks change was to change your dev machine's clock - and remember to change it back afterwards. With a TimeProvider, we **inject a FakeTimeProvider in our tests.** This one is set to 1:30am on the 29th of March - an hour that doesn't exist in the UK. **DateTime didn't get worse. Our expectations of testability went up, and .NET finally gave us the seam.**
+[Click] Because **DateTime.Now is untestable.** The only way to test what happens just before the clocks change was to change your dev machine's clock - and remember to change it back afterwards. With a TimeProvider, we **inject a FakeTimeProvider in our tests.** This one is set to 1:30am on the 29th of March - an hour that doesn't exist in the UK. **DateTime didn't get worse. Our expectations of testability went up, and .NET finally gave us the tool for the job.**
 
 [Click] One caveat: **Umbraco's own system dates - created, updated, published - are still DateTime.** Since v17 they're always stored in UTC - they didn't used to be - so compare them in UTC, and **never against DateTime.Now.** Your property values can be different: v17's new Date Time with Time Zone editor gives you a DateTimeOffset.
 -->
 
 ---
 layout: two-cols-header
-
-
 ---
 
 # `Union` and `Concat`
-<small>The ghost of LINQ glue (2023, C# 12)</small>
+<small>The ghost of LINQ glue (2023, C# 11)</small>
 
 ::left::
 
@@ -407,9 +407,9 @@ List<Article> all =
 </v-click>
 
 <!--
-Our next ghost is a quick one. **Does anyone know the difference between Union and Concat?** Surely someone in an audience this size...
+Our next ghost is a quick one. **Does anyone know the difference between Union and Concat?**
 
-**Union de-duplicates as it goes. Concat just sticks the two together.** People reach for Union meaning "and also", and that's a bug, not a style point.
+**Union de-duplicates as it goes. Concat just sticks the two together.** People reach for Union meaning "and also", and that's a bug.
 
 And it doesn't even de-duplicate reliably: nothing in Umbraco's content models overrides Equals, so **Union is comparing references.** Most of the time the cache hands you the same instance for the same node, but not in preview, and not across a publish. **If you mean de-duplication, say so: DistinctBy on the Key.** Either way it's unclear what's happening, and it's easy to end up with a Union and a Distinct on the end, just to be sure.
 
@@ -435,7 +435,7 @@ layout: two-cols-header
 ---
 
 # Block names and labels
-<small>The ghost of AngularJS label templates (2024, v14)</small>
+<small>The ghost of AngularJS label templates (2024, v13)</small>
 
 ::left::
 
@@ -443,14 +443,16 @@ layout: two-cols-header
 
 ::right::
 
-<v-click>
+<div v-click="['+1', '+1']">
 
 <img src="/screenshots/after-about-us-blocks-editor.png" class="rounded shadow-lg" />
 
-</v-click>
+</div>
 
-<div v-click class="absolute inset-0 flex items-center justify-center">
-  <img src="/screenshots/add-new-block.png" class="w-90 rounded-lg shadow-2xl border border-gray-200" />
+<div v-click="'+0'">
+
+  <img src="/screenshots/add-new-block.png" class="rounded shadow-lg" />
+
 </div>
 
 <!--
@@ -466,7 +468,7 @@ layout: two-cols-header
 ---
 
 # Document type inheritance
-<small>The ghost of master document types (2014, v7.2)</small>
+<small>The ghost of master document types (2014, v7.1)</small>
 
 ::left::
 
@@ -485,7 +487,7 @@ Now I'm sure we've all seen this: **document type inheritance**, five levels dee
 
 The trouble is that **a type can only be in one hierarchy.** I can't inherit my news article page from both an article page and a sponsored page. And **whatever's above you, you get**: if News Article Page needs an author field, then Sponsored News Article Page gets one too, whether it needs it or not.
 
-[Click] What we do now is **use compositions - a document type can use as many as it needs.** I'm a big fan of a Has or Is prefix for compositions. You don't have to use that one, but **some kind of naming convention really helps**, and so does putting them in their own folder. **If a type would need to be in two hierarchies, you needed compositions from the start.**
+[Click] What we do now is **use compositions - a document type can use as many as it needs.** I'm a big fan of a Has or Is prefix for compositions. You don't have to use that one, but **some kind of naming convention really helps**, and so does putting them in their own folder. **Inheritance is almost never the right answer now we have compositions.**
 -->
 
 ---
@@ -495,7 +497,7 @@ layout: two-cols-header
 ---
 
 # The page-builder reflex
-<small>The ghost of the Grid Layout (2014–2024, v7.2–v14)</small>
+<small>The ghost of the Grid Layout (2024, v13)</small>
 
 ::left::
 
@@ -523,14 +525,14 @@ Editors like flexibility, absolutely. But **too much flexibility means entering 
 
 ---
 layout: intro
-# ghostly fade between sections
 
+# ghostly fade between sections
 ---
 
 # Haunting your infrastructure
 
 <!--
-Our final section is the ghosts that haunt your infrastructure. **The ground moved around the code this time: the edge, the build tooling, the browser, and the cost of writing code yourself.** The old plumbing still works - it's just been outclassed. This bit goes fast.
+Our final section is the ghosts that haunt your infrastructure. **The ground moved around the code this time: the edge, the build tooling, the browser, and the cost of writing code yourself.** The old plumbing still works - it's just been outclassed.
 -->
 
 ---
@@ -554,7 +556,7 @@ layout: two-cols-header
 ---
 
 # Redirects and 404s
-<small>The ghost of the ContentFinder chain (2023, v12)</small>
+<small>The ghost of the ContentFinder chain (2023, v11)</small>
 
 ::left::
 
@@ -576,7 +578,37 @@ public class LegacyUrlContentFinder
 
 ::right::
 
-<v-click>
+<!-- Step 1: rewrite middleware, before Umbraco. Replaced by the edge version on the next click. -->
+<div v-click="['+1', '+2']">
+
+```xml[redirects.xml]
+<rewrite>
+  <rules>
+    <rule name="NYC billboard" stopProcessing="true">
+      <match url="^nyc/?$" />
+      <action type="Redirect"
+        url="/hotels/new-york-city" />
+    </rule>
+  </rules>
+</rewrite>
+```
+
+</div>
+
+<div v-click="['-1', '+1']">
+
+```csharp[Program.cs]
+app
+.UseRewriter(new RewriteOptions()
+  .AddIISUrlRewrite(
+    app.Environment.ContentRootFileProvider,
+    "redirects.xml"))
+  .UseUmbraco();
+```
+
+</div>
+
+<div v-click="'+0'">
 
 ```js[redirects-worker.js]
 // Cloudflare Worker — never reaches origin
@@ -589,22 +621,20 @@ if (table) {
 }
 ```
 
-</v-click>
-
-<v-click>
-
 Table pulled from the Delivery API at build time
 
-</v-click>
+</div>
 
 <!--
-Here's **a content finder doing redirects**, at the end of the chain. It's how Umbraco's own redirect tracking works, and it's a pattern you may well have written yourself. **Every lookup is a database query, and none of them are cached** - Umbraco's own finder can make two per unmatched request. And because it runs last, **we go through the whole Umbraco request pipeline before we finally give up and redirect.**
+Here's **a content finder doing redirects**, at the end of the chain. It's roughly how Umbraco's own redirect tracking and Skybrud Redirects work, and it's a pattern you may well have written yourself. **Every lookup is a database query, and none of them are cached** - Umbraco's own finder can make two per unmatched request. And because it runs last, **we go through the whole Umbraco request pipeline before we finally give up and redirect.**
 
-There's a reason it runs last: **if someone creates a page at a path that used to redirect, the page should win.** But for high-volume URLs we know are redirects, that's the wrong end of the pipeline. And the 404 path runs for every bot and scanner too, so **the cost lands on your worst traffic - and on the one URL that matters.**
+There's a reason it runs last: **if someone creates a page at a path that used to redirect, the page should win.** But for high-volume URLs we *know* are redirects, that's the wrong end of the pipeline. And the 404 path runs for every bot and scanner too, so redirects can be hit more than you expect and can even bring a site down.
 
-[Click] So instead of it being the last thing we do, what if it's the first thing we do, **before we even reach the server?** We pull all the redirects out of Umbraco automatically using the Delivery API, push them into Cloudflare Workers KV, and have a Worker check every request before anything else. **It's still content-managed, but it's at the edge.** And suddenly **/nyc becomes the fastest request on the site, not the slowest.**
+So instead of it being the last thing we do, what if it's the first thing we do, we need to bring the redirect earlier in the pipeline. [Click] If you're hosting on IIS, your old web.config rewrite rules still work - and they run before .NET even sees the request. If you're not, the same rules can run as **middleware** [Click] from a redirects.xml, before Umbraco gets involved.
 
-We do the same for malicious URLs. If someone's asking for /wp-admin, we already know it's going to 404 - so **404 at the edge.** It doesn't even need to be a pretty 404. [Click]
+But how about if we do the redirect even earlier, **before we even reach the server?** [Click] We pull all the redirects out of Umbraco automatically using the Delivery API, push them into Cloudflare Workers Table, and have a Worker check every request before anything else. **It's still content-managed, but it's at the edge.** And suddenly **/nyc becomes the fastest request on the site, not the slowest.**
+
+We do the same for malicious URLs. If someone's asking for /wp-admin, we already know it's going to 404 - so **404 at the edge.** It doesn't even need to be a pretty 404.
 -->
 
 ---
@@ -612,17 +642,17 @@ layout: two-cols-header
 ---
 
 # Bundling
-<small>The ghost of `?v=` build numbers (2020, Vite)</small>
+<small>The ghost of server-side bundling (2024, v13)</small>
 
 ::left::
 
 ```html
-<script src="~/bundles/site.js?v=20241107.3">
+<script src="~/bundles/main.js?v=20241107.3">
 </script>
 ```
 
 ```csharp
-bundles.CreateJsBundle("site",
+bundles.CreateJsBundle("main",
     "~/js/app.js",
     "~/js/vendor.js",
     "~/js/jquery.js");
@@ -634,8 +664,8 @@ bundles.CreateJsBundle("site",
 
 ```
 dist/assets/
-  site-a3f9c21b.js
-  site-7d02e114.css
+  main-a3f9c21b.js
+  main-7d02e114.css
 ```
 
 ```js[vite.config.js]
@@ -645,20 +675,18 @@ build: {
 }
 ```
 
-</v-click>
-
-<v-click>
-
-Content hashes, not build numbers
+```html[layout.cshtml]
+<script type="text/javascript" asp-src-include="/assets/js/main-*.js" defer></script>
+```
 
 </v-click>
 
 <!--
-Bundling is one of my pet peeves. **Server-side bundling, with cache busting by build number**, was the best way to do things for a long, long time. **Smidge was removed from Umbraco in v14**, when the backoffice moved to ES modules that server-side bundling can't reason about, and Umbraco now recommends a front-end build tool instead. There's a community package to put it back, but I wouldn't.
+Bundling is one of my pet peeves. **Server-side bundling, with cache busting by build number**, was the best way to do things for a long, long time. **Smidge was removed from Umbraco in v14**, when the backoffice moved to ES modules that server-side bundling can't handle, and Umbraco now recommends a front-end build tool instead. There's a community package to put it back... but I wouldn't.
 
-It doesn't do tree shaking. **The cache busting is global: one version number, so every asset invalidates on every deploy** - busting per deploy, when it should be per file. **It needs .NET to understand JavaScript and CSS**, so when new front-end features come along, it breaks. And if you bring a modern front-end developer onto your team, this isn't how they expect bundling to work.
+It doesn't do tree shaking. **The cache busting is global: one version number, so every asset invalidates on every deploy** - cachebusting per deploy, when it should be per file. **It needs .NET to understand JavaScript and CSS**, so when new front-end features come along, it breaks. And if you bring a modern front-end developer onto your team, this isn't how they expect bundling to work.
 
-[Click] Here I'm using Vite. It doesn't have to be Vite - it's just what we use, and what Umbraco's own docs recommend for backoffice extensions. **The file names are content-hashed, so they only change when the file changes.** It tree-shakes, so code you've stopped using leaves the bundle. And it's really easy to reference from .NET: **the script tag helper's asp-src-include takes a glob**, so site-star-dot-js picks up whatever the current file is. [Click]
+[Click] Here I'm using Vite. It doesn't have to be Vite - it's just what we use, and what Umbraco's own docs recommend for backoffice extensions. **The file names are content-hashed, so they only change when the file changes.** It tree-shakes, so code you've stopped using leaves the bundle. And it's really easy to reference from .NET: **the script tag helper's asp-src-include takes a glob**, so main-*.js picks up whatever the current file is.
 -->
 
 ---
@@ -692,19 +720,17 @@ document.querySelector('.nav-toggle')
 </v-click>
 
 <!--
-jQuery. It's still in a lot of the long-lived sites we work on. **jQuery was built largely to paper over the differences between browsers - Internet Explorer above all.** Internet Explorer is dead, and there are **three browser engines left, one of them dominant**, all very standards-compliant.
+jQuery. It's still in a lot of the long-lived sites we work on. **jQuery was built largely to paper over the differences between browsers - Internet Explorer above all.** Internet Explorer is dead, and the remaining browser engines are all very standards-compliant.
 
 And **we don't need document ready** if we load our scripts with defer, or as modules - the document's been parsed by the time they run.
 
-[Click] **Same length, one fewer dependency.** Selectors, event binding, toggling a class - all one-liners in modern JavaScript now. And **modern JavaScript works alongside jQuery, so new code doesn't have to be jQuery. You can replace it gradually.**
+[Click] **Same length, one fewer dependency.** Selectors, event binding, toggling a class - are all one-liners in modern JavaScript now. And **modern JavaScript works alongside jQuery, so new code doesn't have to be jQuery. You can replace it gradually.**
 
 Did you know a new version of jQuery came out this year? **jQuery 4 came out in January - the first major version in almost a decade.** It drops old Internet Explorer and a lot of deprecated APIs, so it's **lighter**. If you can't get rid of jQuery yet, at least upgrade it. There may be some compatibility issues with plugins, but it's almost free. **Preferably, get rid of it, step by step.**
 -->
 
 ---
 layout: two-cols-header
-
-
 ---
 
 # Rolling your own
@@ -745,7 +771,7 @@ Everyone has said or thought at least two of these. **Rolling your own is so tem
 
 But **you didn't save the week. You bought a decade of maintenance.** The value of a package was never the code - **it's the bug reports from everyone else's sites.** Hundreds of sites have already hit the edge cases you haven't reached yet, and you can't generate that. When the next major version lands, either the maintainer does the work or you do. **Generated code is cheap to write and exactly as expensive to own.** And if you have built something with AI, **open source it**, so we all share the maintenance, the testing and the new features.
 
-[Click] So keep looking for packages, and here's how to judge one. Downloads active and growing. A recent last commit. **Preferably more than one maintainer** - though some single maintainers' reputations do precede them. Issues answered, not ignored. And even if you're not on the latest Umbraco yet, **make sure it supports the latest version, so you know it'll be there when you upgrade.** Screenshot this one.
+[Click] So keep looking for packages, and here's how to judge one. Downloads active and growing. A recent last commit. **Preferably more than one maintainer** - though some single maintainers' reputations do precede them. Issues answered, not ignored. And even if you're not on the latest Umbraco yet, **make sure it supports the latest version, so you know it'll be there when you upgrade.**
 -->
 
 ---
@@ -764,19 +790,17 @@ That's fine. **The ground hasn't stopped moving - that's what a platform that's 
 
 ---
 layout: intro
-# ghostly fade between sections
-
 ---
 
-# Spotting the next one
+# The Ghosts of Umbraco Yet to Come
 
 <!--
-Every ghost today rotted the same way, in the code, the editors' world and the infrastructure alike: **the ground moved and the advice stayed still. So how do we get into the frame of mind to spot the next one** - without waiting for someone to give this talk again in 2029?
+So now let's move onto the Ghosts of Umbraco Yet to Come - how do we spot the next one, without waiting for me to rehash this talk in a year or two?
 -->
 
 ---
 
-# Spotting the next one
+# The Ghosts of Umbraco Yet to Come
 
 <v-clicks>
 
@@ -789,9 +813,9 @@ Every ghost today rotted the same way, in the code, the editors' world and the i
 </v-clicks>
 
 <!--
-Here's my list. [Click] **Is the behaviour hiding something?** If something's tucked away in a service, or the return type isn't telling you what you're actually getting - like that IEnumerable that was secretly a list - that's a red flag.
+Here's a checklist that I believe may help spot ghosts. [Click] **Is the behaviour hiding something?** If something's tucked away in a service, or the return type isn't telling you what you're actually getting - like that IEnumerable that was secretly a list - that's a red flag.
 
-[Click] **How old is the advice?** How old is the blog post, the Stack Overflow answer, the forum post? Most of us learned Umbraco LINQ from posts written for v7. And how recently has your colleague taken in anything from the community? You're all getting fresh advice today.
+[Click] **How old is the advice?** How old is the blog post, the Stack Overflow answer, the forum post? I did my first training course on v7 - a lot of that is out of date now! And how recently has your colleague taken in anything from the community? You're all getting fresh advice today.
 
 [Click] **What changed underneath?** Keep a vague idea of the big headline changes in each version, in the back of your mind. The cache changed - so is this still the right way to use the cache?
 
@@ -800,16 +824,19 @@ Here's my list. [Click] **Is the behaviour hiding something?** If something's tu
 [Click] And this is an interesting one: **am I just being nostalgic?** If the whole community has moved on and you're still doing it the old way, **is there a reason beyond "that's how I've always done it"?** And the AI assistants confidently recommending v7 patterns are making exactly the same mistake, automated - trained on a decade of blog posts that were right when they were written.
 -->
 
-
 ---
 layout: bio
-tagline: Senior Developer at Bump
+name: Thank you!
 image: /images/joe-portrait.png
 ---
 
 - <logos-mastodon-icon /> [@joe@umbraco&#8239;community.social](https://umbracocommunity.social/@joe)
 - <logos-bluesky /> [@joe.gl](https://bsky.app/profile/joe.gl)
 - <solar-global-bold-duotone /> [joe.gl/ombek](https://joe.gl/ombek)
+
+<br />
+
+- <solar-presentation-graph-bold-duotone/> https://slides.joe.gl/ghosts-of-umbraco-past
 
 <!--
 **Thank you very much for listening.** There's no Q&A, so **come and find me in the hallway, or on socials.**
