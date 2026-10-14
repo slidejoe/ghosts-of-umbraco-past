@@ -836,7 +836,7 @@ image: /images/joe-portrait.png
 
 <br />
 
-- <solar-presentation-graph-bold-duotone/> https://slides.joe.gl/ghosts-of-umbraco-past
+- <solar-presentation-graph-bold-duotone/> https://slides.joe.gl/ghosts-of-umbraco-past{qr=block qrSize=150}
 
 <!--
 **Thank you very much for listening.** There's no Q&A, so **come and find me in the hallway, or on socials.**
